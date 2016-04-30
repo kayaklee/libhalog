@@ -9,8 +9,10 @@
 
 #define LIKELY(x) __builtin_expect(!!(x),1)
 #define UNLIKELY(x) __builtin_expect(!!(x),0)
-#define GETTID() clib::gettid()
 #define PAUSE() asm("pause\n")
+
+#define GETTID() clib::gettid()
+#define ARRAYSIZE(array) (sizeof(array) / sizeof(array[0]))
 
 namespace libhalog {
 namespace clib {

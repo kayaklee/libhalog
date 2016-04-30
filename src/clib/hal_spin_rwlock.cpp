@@ -18,7 +18,7 @@ namespace clib {
   HALSpinRWLock::~HALSpinRWLock() {
   }
 
-  bool HALSpinRWLock::TryRLock() {
+  bool HALSpinRWLock::try_rlock() {
     bool bret = false;
     Atomic old_v = atomic_;
     Atomic new_v = old_v;
@@ -32,33 +32,31 @@ namespace clib {
     return bret;
   }
 
-  void HALSpinRWLock::RLock() {
-    Atomic old_v = atomic_;
+  void HALSpinRWLock::rlock() {
     while (true) {
-      Atomic cur_v = old_v;
+      Atomic old_v = atomic_;
       Atomic new_v = old_v;
       new_v.r_ref_cnt_++;
       if (0 == old_v.w_pending_ 
           && 0 == old_v.w_lock_flag_
           && MAX_REF_CNT > old_v.r_ref_cnt_
-          && cur_v.v_ == (old_v.v_ = __sync_val_compare_and_swap(&atomic_.v_, old_v.v_, new_v.v_))) {
+          && __sync_bool_compare_and_swap(&atomic_.v_, old_v.v_, new_v.v_)) {
         break;
       }
       PAUSE();
     } // while
   }
 
-  void HALSpinRWLock::RUnlock() {
-    Atomic old_v = atomic_;
+  void HALSpinRWLock::unrlock() {
     while (true) {
-      Atomic cur_v = old_v;
+      Atomic old_v = atomic_;
       Atomic new_v = old_v;
       new_v.r_ref_cnt_--;
       if (0 != old_v.w_lock_flag_
           || 0 == old_v.r_ref_cnt_
           || MAX_REF_CNT < old_v.r_ref_cnt_) {
         assert(0);
-      } else if (cur_v.v_ == (old_v.v_ = __sync_val_compare_and_swap(&atomic_.v_, old_v.v_, new_v.v_))) {
+      } else if (__sync_bool_compare_and_swap(&atomic_.v_, old_v.v_, new_v.v_)) {
         break;
       } else {
         PAUSE();
@@ -66,7 +64,7 @@ namespace clib {
     } // while
   }
 
-  bool HALSpinRWLock::TryLock() {
+  bool HALSpinRWLock::try_lock() {
     bool bret = false;
     Atomic old_v = atomic_;
     Atomic new_v = old_v;
@@ -80,10 +78,9 @@ namespace clib {
     return bret;
   }
 
-  void HALSpinRWLock::Lock() {
-    Atomic old_v = atomic_;
+  void HALSpinRWLock::lock() {
     while (true) {
-      Atomic cur_v = old_v;
+      Atomic old_v = atomic_;
       Atomic new_v = old_v;
       bool pending = false;
       if (0 != old_v.w_lock_flag_
@@ -94,7 +91,7 @@ namespace clib {
         new_v.w_pending_ = 0;
         new_v.w_lock_flag_ = 1;
       }
-      if (cur_v.v_ == (old_v.v_ = __sync_val_compare_and_swap(&atomic_.v_, old_v.v_, new_v.v_))) {
+      if (__sync_bool_compare_and_swap(&atomic_.v_, old_v.v_, new_v.v_)) {
         if (!pending) {
           w_owner_ = GETTID();
           break;
@@ -104,16 +101,15 @@ namespace clib {
     } // while
   }
 
-  void HALSpinRWLock::Unlock() {
-    Atomic old_v = atomic_;
+  void HALSpinRWLock::unlock() {
     while (true) {
-      Atomic cur_v = old_v;
+      Atomic old_v = atomic_;
       Atomic new_v = old_v;
       new_v.w_lock_flag_ = 0;
-      if (0 != old_v.w_lock_flag_
+      if (0 == old_v.w_lock_flag_
           || 0 != old_v.r_ref_cnt_) {
         assert(0);
-      } else if (cur_v.v_ == (old_v.v_ = __sync_val_compare_and_swap(&atomic_.v_, old_v.v_, new_v.v_))) {
+      } else if (__sync_bool_compare_and_swap(&atomic_.v_, old_v.v_, new_v.v_)) {
         break;
       } else {
         PAUSE();

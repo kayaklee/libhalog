@@ -27,12 +27,12 @@ namespace clib {
       HALSpinRWLock();
       ~HALSpinRWLock();
     public:
-      bool TryRLock();
-      void RLock();
-      void RUnlock();
-      bool TryLock();
-      void Lock();
-      void Unlock();
+      bool try_rlock();
+      void rlock();
+      void unrlock();
+      bool try_lock();
+      void lock();
+      void unlock();
     private:
       volatile Atomic atomic_;
       int64_t w_owner_;

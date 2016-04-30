@@ -1,6 +1,6 @@
-noinst_LTLIBRARIES = libclib.la
+noinst_LTLIBRARIES = libclib.a
 
-AM_CPPFLAGS = -fPIC -std=c++0x \
+AM_CPPFLAGS = \
 	-I${top_srcdir}/src
 
 clib_sources = \
@@ -8,4 +8,4 @@ clib_sources = \
 	hal_spin_rwlock.h hal_spin_rwlock.cpp \
 	hal_util.h
 
-libclib_la_SOURCES = ${clib_sources}
+libclib_a_SOURCES = ${clib_sources}

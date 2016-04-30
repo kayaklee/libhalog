@@ -9,6 +9,9 @@ AM_INIT_AUTOMAKE(libhalog, 1.0)
 AC_PROG_CXX
 AC_PROG_CC
 AC_PROG_LIBTOOL
+AC_LANG([C++])
+
+CXXFLAGS="-g -std=c++0x -fPIC -finline-functions -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS"
 
 # Checks for libraries.
 AC_PROG_RANLIB
@@ -22,4 +25,6 @@ AC_PROG_RANLIB
 AC_OUTPUT(Makefile
     src/Makefile
     src/clib/Makefile
+    test/Makefile
+    test/clib/Makefile
     )
