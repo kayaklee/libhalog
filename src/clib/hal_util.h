@@ -3,6 +3,8 @@
 
 #ifndef __HAL_CLIB_UTIL_H__
 #define __HAL_CLIB_UTIL_H__
+
+#include <unistd.h>
 #include <sys/syscall.h>
 
 #define LIKELY(x) __builtin_expect(!!(x),1)
