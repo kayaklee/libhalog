@@ -22,6 +22,7 @@ void *rlock_func(void *data) {
     *tt->gcheck = *tt->gdata;
     tt->rwlock->unrlock();
   }
+  return NULL;
 }
 
 void *try_rlock_func(void *data) {
@@ -33,6 +34,7 @@ void *try_rlock_func(void *data) {
       i++;
     }
   }
+  return NULL;
 }
 
 void *lock_func(void *data) {
@@ -44,6 +46,7 @@ void *lock_func(void *data) {
     *tt->gcheck = *tt->gdata;
     tt->rwlock->unlock();
   }
+  return NULL;
 }
 
 void *try_lock_func(void *data) {
@@ -57,6 +60,7 @@ void *try_lock_func(void *data) {
       i++;
     }
   }
+  return NULL;
 }
 
 struct ThreadFunc {
@@ -89,7 +93,7 @@ void test(
   HALSpinRWLock rwlock;
   volatile int64_t gdata = 0;
   volatile int64_t gcheck = 0;
-  for (int64_t i = 0, t = 0; i < ARRAYSIZE(thread_func_array); i++) {
+  for (uint64_t i = 0, t = 0; i < ARRAYSIZE(thread_func_array); i++) {
     for (int64_t j = 0; j < thread_func_array[i].thread_count; j++, t++) {
       tt[t].count = count_per_thread;
       tt[t].rwlock = &rwlock;
@@ -98,7 +102,7 @@ void test(
       pthread_create(&td[t], NULL, thread_func_array[i].thread_func, &tt[t]);
     }
   }
-  for (int64_t i = 0, t = 0; i < ARRAYSIZE(thread_func_array); i++) {
+  for (uint64_t i = 0, t = 0; i < ARRAYSIZE(thread_func_array); i++) {
     for (int64_t j = 0; j < thread_func_array[i].thread_count; j++, t++) {
       pthread_join(td[t], NULL);
     }

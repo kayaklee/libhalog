@@ -11,7 +11,10 @@ AC_PROG_CC
 AC_PROG_LIBTOOL
 AC_LANG([C++])
 
-CXXFLAGS="-g -std=c++0x -fPIC -finline-functions -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS"
+CXXFLAGS="-g -std=c++0x -fPIC -finline-functions \
+    -Wall -Werror -Wextra -Wunused-parameter -Wformat -Wconversion \
+    -fno-strict-aliasing \
+    -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS"
 
 # Checks for libraries.
 AC_PROG_RANLIB

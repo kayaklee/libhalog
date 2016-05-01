@@ -12,8 +12,10 @@ HAL_LOG_LEVEL_DEF(END)
 
 #ifndef __HAL_CLIB_BASE_LOG_H__
 #define __HAL_CLIB_BASE_LOG_H__
+#include <sys/types.h>
 #include <stdint.h>
-#include <pthread.h>
+#include <time.h>
+#include "clib/hal_spin_rwlock.h"
 
 namespace libhalog {
 namespace clib {
@@ -48,6 +50,7 @@ namespace clib {
   class HALLogLevelFilterDefault: public IHALLogLevelFilter {
     public:
       bool i_if_output(const int32_t level) const {
+        UNUSED(level);
         return true;
       }
   };
@@ -81,12 +84,17 @@ namespace clib {
   ////////////////////////////////////////////////////////////////////////////////////////////////////
   
   class HALLog {
+    static const int64_t DEFAULT_MAX_LOG_FILE_SIZE = 1L*1024L*1024L*1024L;
+    static const int64_t MAX_FILE_NAME_LENGTH = 4096;
+    static const int64_t MAX_LOG_HEADER_SIZE = 256;
+    static const int64_t MAX_LOG_CONTENT_SIZE = 4096;
     static const mode_t LOG_FILE_MODE = 0644;
+    static const mode_t LOG_DIR_MODE = 0775;
     public:
       HALLog();
       virtual ~HALLog();
     public:
-      int set_file_name(const char *file_name, const bool redirect_std);
+      int open_log(const char *file_name, const bool redirect_std, const bool switch_file);
 
       int set_max_size(const int64_t size);
 
@@ -96,11 +104,9 @@ namespace clib {
 
       int set_level_string(const IHALLogLevelString *level_string);
 
-      int set_redirect_std();
-
       int set_check_file_exist(const bool check_file_exist);
     public:
-      int write_log(
+      void write_log(
           const char *module,
           const int32_t level,
           const char *file,
@@ -110,32 +116,42 @@ namespace clib {
           ...) __attribute__((format(printf, 7, 8)));
 
       template <typename... Args>
-      int write_kv(
+      void write_kv(
           const char *module,
           const int32_t level,
           const char *file,
           const int32_t line,
           const char *function,
           const Args&... args);
-    public:
-      int get_currnet_fd_();
     private:
-      pthread_rwlock_t file_name_lock_;
+      void create_log_dir_(const char *file_name);
+      bool need_switch_file_(const int64_t reserve_size);
+      void switch_file_(const int64_t reserve_size, const bool force);
+      int get_fd_(const int64_t reserve_size, HALRLockGuard &lock_guard);
+      const char *format_log_header_(
+          const char *module,
+          const int32_t level,
+          const char *file,
+          const int32_t line,
+          const char *function,
+          int64_t &header_length);
+    private:
+      HALSpinRWLock file_lock_;
       const char *file_name_;
       int fd_;
-      int64_t pos_;
+      struct tm fd_tm_;
+      bool redirect_std_;
 
+      int64_t pos_;
       int64_t max_size_;
       int64_t switch_hour_;
       int64_t switch_minute_;
+      bool check_file_exist_;
 
       HALLogLevelFilterDefault level_filter_default_;
       const IHALLogLevelFilter *level_filter_;
       HALLogLevelStringDefault level_string_default_;
       const IHALLogLevelString *level_string_;
-
-      bool redirect_std_;
-      bool check_file_exist_;
   };
 
 }
