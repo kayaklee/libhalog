@@ -110,6 +110,9 @@ void test(
 
   ASSERT_EQ(gdata, gcheck);
   ASSERT_EQ(gdata, (lock_thread_count + try_lock_thread_count) * count_per_thread);
+
+  delete[] td;
+  delete[] tt;
 }
 
 TEST(HALSpinRWLock, multi_thread) {
