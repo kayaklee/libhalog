@@ -4,7 +4,7 @@
 #ifndef __HAL_CLIB_SPIN_RWLOCK_H__
 #define __HAL_CLIB_SPIN_RWLOCK_H__
 #include <stdint.h>
-#include "hal_util.h"
+#include <stdlib.h>
 
 namespace libhalog {
 namespace clib {

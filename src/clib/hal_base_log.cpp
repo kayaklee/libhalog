@@ -15,6 +15,7 @@
 #include <assert.h>
 #include "hal_base_log.h"
 #include "hal_error.h"
+#include "hal_util.h"
 
 namespace libhalog {
 namespace clib {
@@ -260,7 +261,7 @@ namespace clib {
         base_file_name,
         line,
         function,
-        GETTID());
+        gettid());
     if (header_length >= MAX_LOG_HEADER_SIZE) {
       header_length = MAX_LOG_HEADER_SIZE - 1;
     } else if (header_length < 0) {

@@ -2,6 +2,7 @@
 // Author: likai.root@gmail.com
 
 #include <assert.h>
+#include "hal_util.h"
 #include "hal_spin_rwlock.h"
 
 namespace libhalog {
@@ -93,7 +94,7 @@ namespace clib {
       }
       if (__sync_bool_compare_and_swap(&atomic_.v_, old_v.v_, new_v.v_)) {
         if (!pending) {
-          w_owner_ = GETTID();
+          w_owner_ = gettid();
           break;
         }
       }

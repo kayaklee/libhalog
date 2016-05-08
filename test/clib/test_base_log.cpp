@@ -2,14 +2,18 @@
 // Author: likai.root@gmail.com
 
 #include "clib/hal_base_log.h"
+#include "clib/hal_util.h"
 #include <gtest/gtest.h>
 
+using namespace libhalog;
 using namespace libhalog::clib;
 
 TEST(HALLog, basic) {
   HALLog log;
   log.open_log("./log/test_base_log.log", false, true);
   log.write_log("clib", HALLogLevels::HAL_LOG_INFO, __FILE__, __LINE__, __FUNCTION__, "hello key=[%s]", "world");
+  SET_TSI_LOGGER(&log);
+  LOG_INFO(CLIB, "write by macro, [%s]", "Hello world!");
 }
 
 TEST(HALLog, size2switch) {

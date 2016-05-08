@@ -3,6 +3,8 @@
 *.lo
 *.o
 *.obj
+*.Plo
+.deps/
 
 # Precompiled Headers
 *.gch
@@ -26,3 +28,19 @@
 *.exe
 *.out
 *.app
+
+#automake
+Makefile
+Makefile.in
+/aclocal.m4
+/autom4te.cache
+/config.guess
+/config.log
+/config.status
+/config.sub
+/configure
+/depcomp
+/install-sh
+/libtool
+/ltmain.sh
+/missing

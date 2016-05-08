@@ -22,6 +22,11 @@ echo 'cleaning...'
   echo 'done'
   ;;
 *)
+  set -x
+  aclocal
+  libtoolize --force --copy --automake
+  autoconf --force
+  automake --foreign --copy --add-missing -Woverride
   ./configure
   ;;
 esac

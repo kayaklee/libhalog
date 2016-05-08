@@ -16,6 +16,16 @@ HAL_LOG_LEVEL_DEF(END)
 #include <stdint.h>
 #include <time.h>
 #include "clib/hal_spin_rwlock.h"
+  
+#define CLIB "clib"
+#define SET_TSI_LOGGER(logger) libhalog::clib::set_tsi(logger)
+#define LOG_DEBUG(__mod__, __fmt__, args...) __HAL_LOG__(__mod__, libhalog::clib::HALLogLevels::HAL_LOG_DEBUG, __fmt__, ##args)
+#define LOG_TRACE(__mod__, __fmt__, args...) __HAL_LOG__(__mod__, libhalog::clib::HALLogLevels::HAL_LOG_TRACE, __fmt__, ##args)
+#define LOG_INFO(__mod__, __fmt__, args...)  __HAL_LOG__(__mod__, libhalog::clib::HALLogLevels::HAL_LOG_INFO, __fmt__, ##args)
+#define LOG_WARN(__mod__, __fmt__, args...)  __HAL_LOG__(__mod__, libhalog::clib::HALLogLevels::HAL_LOG_WARN, __fmt__, ##args)
+#define LOG_ERROR(__mod__, __fmt__, args...) __HAL_LOG__(__mod__, libhalog::clib::HALLogLevels::HAL_LOG_ERROR, __fmt__, ##args)
+#define __HAL_LOG__(__MOD__, __LEVEL__, __fmt__, args...) \
+    (libhalog::clib::get_tsi<HALLog>() ? libhalog::clib::get_tsi<HALLog>()->write_log(__MOD__, __LEVEL__, __FILE__, __LINE__, __FUNCTION__, __fmt__, ##args) : libhalog::clib::gsi<HALLog>().write_log(__MOD__, __LEVEL__, __FILE__, __LINE__, __FUNCTION__, __fmt__, ##args))
 
 namespace libhalog {
 namespace clib {
@@ -50,13 +60,15 @@ namespace clib {
   class HALLogLevelFilterDefault: public IHALLogLevelFilter {
     public:
       bool i_if_output(const int32_t level) const {
-        UNUSED(level);
-        return true;
+        bool bret = false;
+        if (level >= 0 && level < HALLogLevels::HAL_LOG_END) {
+          bret = true;
+        }
+        return bret;
       }
   };
 
   class HALLogLevelStringDefault : public IHALLogLevelString {
-    static const int64_t DEFAULT_LOG_LEVEL_COUNT = HALLogLevels::HAL_LOG_END;
     public:
       HALLogLevelStringDefault() {
 #define HAL_LOG_LEVEL_DEF(name) set_level_string_(HALLogLevels::HAL_LOG_##name, #name);
@@ -66,19 +78,19 @@ namespace clib {
     public:
       const char *i_level_string(const int64_t level) const {
         const char *ret = "UNKNOW";
-        if (level >= 0 && level < DEFAULT_LOG_LEVEL_COUNT) {
+        if (level >= 0 && level < HALLogLevels::HAL_LOG_END) {
           ret = level_strings_[level];
         }
         return ret;
       }
     private:
       inline void set_level_string_(const int64_t level, const char *string) {
-        if (level >= 0 && level < DEFAULT_LOG_LEVEL_COUNT) {
+        if (level >= 0 && level < HALLogLevels::HAL_LOG_END) {
           level_strings_[level] = string;
         }
       }
     private:
-      const char *level_strings_[DEFAULT_LOG_LEVEL_COUNT];
+      const char *level_strings_[HALLogLevels::HAL_LOG_END];
   };
 
   ////////////////////////////////////////////////////////////////////////////////////////////////////

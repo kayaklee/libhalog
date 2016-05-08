@@ -2,6 +2,7 @@
 // Author: likai.root@gmail.com
 
 #include "clib/hal_spin_rwlock.h"
+#include "clib/hal_util.h"
 #include <gtest/gtest.h>
 
 using namespace libhalog::clib;
