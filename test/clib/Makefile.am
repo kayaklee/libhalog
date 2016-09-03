@@ -3,7 +3,7 @@ AM_CPPFLAGS = \
 
 LDADD = ${top_builddir}/src/clib/libclib.a
 
-AM_LDFLAGS = -lpthread -lgtest
+AM_LDFLAGS = -lpthread -lgtest -L/usr/local/lib
 
 bin_PROGRAMS = \
 	test_btree \
