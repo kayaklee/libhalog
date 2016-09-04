@@ -8,10 +8,10 @@
 
 #include <algorithm>
 
-#include "hal_error.h"
-#include "hal_util.h"
-#include "hal_spin_rwlock.h"
-#include "hal_base_log.h"
+#include "clib/hal_error.h"
+#include "clib/hal_util.h"
+#include "clib/hal_spin_rwlock.h"
+#include "clib/hal_base_log.h"
 
 #define BTREE "btree"
 
@@ -19,8 +19,8 @@ namespace libhalog {
 namespace clib {
 namespace btree {
   template <typename Key, typename Value, int64_t NodeSize>
-  class BaseNode {
-    typedef BaseNode<Key, Value, NodeSize> Node;
+  class BaseNodeT {
+    typedef BaseNodeT<Key, Value, NodeSize> Node;
     struct KV {
       KV() {}
       KV(const Key &key) : key_(key) {}
@@ -36,8 +36,8 @@ namespace btree {
         const Node &node_;
     };
     public:
-      BaseNode();
-      ~BaseNode();
+      BaseNodeT();
+      ~BaseNodeT();
     public:
       int search(const Key &key, int64_t &pos, bool &found) const;
       int get(const int64_t pos, Value &value) const;
@@ -63,33 +63,33 @@ namespace btree {
 }
 namespace btree {
   template <typename Key, typename Value, int64_t NodeSize>
-  bool BaseNode<Key, Value, NodeSize>::KeyCompare::operator() (
+  bool BaseNodeT<Key, Value, NodeSize>::KeyCompare::operator() (
       const KV &a,
       const Key &b) const {
     return a.key_ < b;
   }
 
   template <typename Key, typename Value, int64_t NodeSize>
-  bool BaseNode<Key, Value, NodeSize>::KeyCompare::operator() (
+  bool BaseNodeT<Key, Value, NodeSize>::KeyCompare::operator() (
       const Key &a,
       const KV &b) const {
     return a < b.key_;
   }
 
   template <typename Key, typename Value, int64_t NodeSize>
-  BaseNode<Key, Value, NodeSize>::BaseNode()
+  BaseNodeT<Key, Value, NodeSize>::BaseNodeT()
     : cow_rwlock_(),
       size_(0) {
     pthread_spin_init(&update_lock_, PTHREAD_PROCESS_PRIVATE);
   }
 
   template <typename Key, typename Value, int64_t NodeSize>
-  BaseNode<Key, Value, NodeSize>::~BaseNode() {
+  BaseNodeT<Key, Value, NodeSize>::~BaseNodeT() {
     pthread_spin_destroy(&update_lock_);
   }
 
   template <typename Key, typename Value, int64_t NodeSize>
-  int BaseNode<Key, Value, NodeSize>::search(const Key &key, int64_t &pos, bool &found) const {
+  int BaseNodeT<Key, Value, NodeSize>::search(const Key &key, int64_t &pos, bool &found) const {
     int ret = HAL_SUCCESS;
     if (0 > size_) {
       LOG_WARN(BTREE, "unexpected size=%hhd this=%p", size_, this);
@@ -110,7 +110,7 @@ namespace btree {
   }
 
   template <typename Key, typename Value, int64_t NodeSize>
-  int BaseNode<Key, Value, NodeSize>::get(const int64_t pos, Value &value) const {
+  int BaseNodeT<Key, Value, NodeSize>::get(const int64_t pos, Value &value) const {
     int ret = HAL_SUCCESS;
     if (0 > pos || pos > size_) {
       LOG_WARN(BTREE, "invalid pos=%ld size=%hhd this=%p", pos, size_, this);

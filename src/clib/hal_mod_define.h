@@ -36,10 +36,10 @@ namespace clib {
     private:
       int mod_id_;
       const char *mod_str_;
-      int64_t alloc_size_[HAL_MAX_TSI_COUNT];
-      int64_t free_size_[HAL_MAX_TSI_COUNT];
-      int64_t alloc_count_[HAL_MAX_TSI_COUNT];
-      int64_t free_count_[HAL_MAX_TSI_COUNT];
+      int64_t alloc_size_[HAL_MAX_THREAD_COUNT];
+      int64_t free_size_[HAL_MAX_THREAD_COUNT];
+      int64_t alloc_count_[HAL_MAX_THREAD_COUNT];
+      int64_t free_count_[HAL_MAX_THREAD_COUNT];
   };
 
   class HALModSet {

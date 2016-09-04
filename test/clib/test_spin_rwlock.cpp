@@ -120,8 +120,7 @@ TEST(HALSpinRWLock, multi_thread) {
   test(10000000, 2, 2, 2, 2);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc,argv);
   return RUN_ALL_TESTS();
 }

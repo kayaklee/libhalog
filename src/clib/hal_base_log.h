@@ -15,9 +15,11 @@ HAL_LOG_LEVEL_DEF(END)
 #include <sys/types.h>
 #include <stdint.h>
 #include <time.h>
+#include "clib/hal_util.h"
 #include "clib/hal_spin_rwlock.h"
   
 #define CLIB "clib"
+
 #define SET_TSI_LOGGER(logger) libhalog::clib::set_tsi(logger)
 #define LOG_DEBUG(__mod__, __fmt__, args...) __HAL_LOG__(__mod__, libhalog::clib::HALLogLevels::HAL_LOG_DEBUG, __fmt__, ##args)
 #define LOG_TRACE(__mod__, __fmt__, args...) __HAL_LOG__(__mod__, libhalog::clib::HALLogLevels::HAL_LOG_TRACE, __fmt__, ##args)

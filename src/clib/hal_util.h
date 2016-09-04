@@ -11,6 +11,7 @@
 #include <time.h>
 #include <stdint.h>
 #include "hal_define.h"
+#include "hal_atomic.h"
 
 #define LIKELY(x) __builtin_expect(!!(x),1)
 #define UNLIKELY(x) __builtin_expect(!!(x),0)
@@ -22,7 +23,7 @@
 namespace libhalog {
 namespace clib {
 
-  void lkv(const char *name, void *ptr);
+  void log_kv(const char *name, void *ptr);
 
   static inline int64_t gettid() {
     static __thread int64_t tid = -1;
@@ -44,10 +45,10 @@ namespace clib {
   template <typename T>
   T &gsi() {
     static T t;
-    static volatile bool once = true;
-    if (once
+    static bool once = true;
+    if (ATOMIC_LOAD(&once)
         && __sync_val_compare_and_swap(&once, true, false)) {
-      lkv(typeid(T).name(), &t);
+      log_kv(typeid(T).name(), &t);
     }
     return t;
   }
@@ -55,11 +56,11 @@ namespace clib {
   template <typename T>
   T *&tsi() {
     static __thread T *t = NULL;
-    static volatile bool once = true;
+    static bool once = true;
     if (NULL != t
-        && once
+        && ATOMIC_LOAD(&once)
         && __sync_val_compare_and_swap(&once, true, false)) {
-      lkv(typeid(T).name(), t);
+      log_kv(typeid(T).name(), t);
     }
     return t;
   }
@@ -99,10 +100,10 @@ namespace clib {
   }
 
   static inline const struct tm *get_cur_tm() {
-    static __thread struct tm cur_tms[HAL_MAX_TSI_COUNT];
+    static __thread struct tm cur_tms[HAL_MAX_THREAD_COUNT];
     static __thread int64_t pos = 0;
     time_t t = time(NULL);
-    return localtime_r(&t, &cur_tms[pos++ % HAL_MAX_TSI_COUNT]);
+    return localtime_r(&t, &cur_tms[pos++ % HAL_MAX_THREAD_COUNT]);
   }
 
   static inline void get_cur_tm(struct tm &cur_tm) {

@@ -7,7 +7,7 @@
 namespace libhalog {
 namespace clib {
 
-  void lkv(const char *name, void *ptr) {
+  void log_kv(const char *name, void *ptr) {
     LOG_INFO(CLIB, "new gsi [%s] [%p]", name, ptr);
   }
 

@@ -29,26 +29,26 @@ namespace clib {
   }
 
   void HALModItem::on_alloc(const int64_t size) {
-    int64_t tn = gettn() % HAL_MAX_TSI_COUNT;
+    int64_t tn = gettn() % HAL_MAX_THREAD_COUNT;
     alloc_size_[tn] += size;
     alloc_count_[tn]++;
   }
 
   void HALModItem::on_free(const int64_t size) {
-    int64_t tn = gettn() % HAL_MAX_TSI_COUNT;
+    int64_t tn = gettn() % HAL_MAX_THREAD_COUNT;
     free_size_[tn] += size;
     free_count_[tn]++;
   }
 
   const char *HALModItem::cstring() {
-    static __thread char BUFFERS[HAL_MAX_TSI_COUNT][MAX_STR_LENGTH];
+    static __thread char BUFFERS[HAL_MAX_THREAD_COUNT][MAX_STR_LENGTH];
     static int64_t pos = 0;
-    char *buffer = BUFFERS[pos++ % HAL_MAX_TSI_COUNT];
+    char *buffer = BUFFERS[pos++ % HAL_MAX_THREAD_COUNT];
     int64_t alloc_size = 0;
     int64_t alloc_count = 0;
     int64_t hold_size = 0;
     int64_t hold_count = 0;
-    for (int64_t i = 0; i < HAL_MAX_TSI_COUNT; i++) {
+    for (int64_t i = 0; i < HAL_MAX_THREAD_COUNT; i++) {
       alloc_size += alloc_size_[i];
       alloc_count += alloc_count_[i];
       hold_size += (alloc_size_[i] - free_size_[i]);

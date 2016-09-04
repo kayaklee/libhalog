@@ -7,8 +7,8 @@
 using namespace libhalog;
 using namespace libhalog::clib;
 
-TEST(BaseNode, search) {
-  btree::BaseNode<int64_t, int64_t, 32> node;
+TEST(BaseNodeT, search) {
+  btree::BaseNodeT<int64_t, int64_t, 32> node;
 
   int64_t pos = 0;
   bool found = false;
@@ -37,8 +37,7 @@ TEST(BaseNode, search) {
   }
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc,argv);
   return RUN_ALL_TESTS();
 }
