@@ -26,6 +26,7 @@ TEST(HALHazardVersion, simple) {
   HALHazardVersion hv;
   int64_t counter = 0;
 
+  // test entire retire
   uint64_t handle = 0;
   int ret = hv.acquire(handle);
   EXPECT_EQ(HAL_SUCCESS, ret);
@@ -40,6 +41,7 @@ TEST(HALHazardVersion, simple) {
   hv.retire();
   EXPECT_EQ(0, counter);
 
+  // test partial retire
   for (int64_t i = 0; i < 32; i++) {
     int ret = hv.add_node(new SimpleObject(counter));
     EXPECT_EQ(HAL_SUCCESS, ret);
@@ -58,23 +60,25 @@ TEST(HALHazardVersion, simple) {
   hv.retire();
   EXPECT_EQ(0, counter);
 
-  ret = hv.acquire(handle);
-  EXPECT_EQ(HAL_SUCCESS, ret);
-  for (int64_t i = 0; i < 64; i++) {
-    int ret = hv.add_node(new SimpleObject(counter));
-    EXPECT_EQ(HAL_SUCCESS, ret);
-    EXPECT_EQ(i+1, counter);
+  // test acquire in one thread over limit
+  for (int64_t n = 0; n < 2; n++) {
+    uint64_t handles[16];
+    for (int64_t i = 0; i < 16; i++) {
+      int ret = hv.acquire(handles[i]);
+      EXPECT_EQ(HAL_SUCCESS, ret);
+      printf("%lx\n", handles[i]);
+    }
+    int ret = hv.acquire(handle);
+    EXPECT_EQ(HAL_OUT_OF_RESOURCES, ret);
+    printf("%lx\n", handle);
+    for (int64_t i = 0; i < 16; i++) {
+      hv.release(handles[i]);
+      hv.release(handles[i]);
+    }
   }
-  EXPECT_EQ(64, counter);
-  SimpleObject *node = new SimpleObject(counter);
-  ret = hv.add_node(node);
-  EXPECT_EQ(HAL_OUT_OF_RESOURCES, ret);
-  node->retire();
-  hv.release(handle);
-  EXPECT_EQ(64, counter);
-  ret = hv.add_node(new SimpleObject(counter));
-  EXPECT_EQ(HAL_SUCCESS, ret);
-  EXPECT_EQ(1, counter);
+}
+
+TEST(HALHazardVersion, cc) {
 }
 
 int main(int argc, char **argv) {

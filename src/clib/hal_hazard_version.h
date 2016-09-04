@@ -11,23 +11,32 @@
 #include "clib/hal_base_log.h"
 
 #define GetMinVersionIntervalUS 1000000
+#define ThreadWaitingThreshold  64
 
 namespace libhalog {
 namespace clib {
-  class HALHazardNodeI;
+  class HALHazardNodeI {
+    public:
+      HALHazardNodeI() : next_(NULL), version_(UINT64_MAX) {}
+      virtual ~HALHazardNodeI() {}
+      virtual void retire() = 0;
+    public:
+      void set_next(HALHazardNodeI *next) {next_ = next;}
+      HALHazardNodeI *get_next() const {return next_;}
+      void set_version(const uint64_t version) {version_ = version;}
+      uint64_t get_version() const {return version_;}
+    private:
+      HALHazardNodeI *next_;
+      uint64_t version_;
+  };
 
 namespace hazard_version {
   struct VersionNode {
+    VersionNode *prev_;
     VersionNode *next_;
     uint64_t version_;
     uint32_t seq_;
     uint16_t pos_;
-  };
-
-  struct HazardNode {
-    HazardNode *next_;
-    uint64_t version_;
-    HALHazardNodeI *node_;
   };
 
   struct VersionHandle {
@@ -43,11 +52,11 @@ namespace hazard_version {
   };
 
   template <typename T>
-  T *remove_from_slist(T *node, T *&head);
+  void remove_from_dlist(T *node, T *&head);
 
-  template <uint16_t NestSize, int64_t NodeCap>
+  template <uint16_t NestSize>
   class ThreadStoreT {
-    typedef ThreadStoreT<NestSize, NodeCap> TS;
+    typedef ThreadStoreT<NestSize> TS;
     public:
       ThreadStoreT();
       ~ThreadStoreT();
@@ -74,26 +83,23 @@ namespace hazard_version {
       VersionNode *version_free_list_;
       VersionNode *version_using_list_;
 
-      HazardNode hazard_nodes_[NodeCap];
-      HazardNode *hazard_free_list_;
-      HazardNode *hazard_waiting_list_;
+      HALHazardNodeI *hazard_waiting_list_;
       int64_t hazard_waiting_count_;
 
       TS *next_;
+  };
+
+  class DummyHazardNode : public HALHazardNodeI {
+    public:
+      void retire() {}
   };
 }
 
   ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-  class HALHazardNodeI {
-    public:
-      virtual ~HALHazardNodeI() {}
-      virtual void retire() = 0;
-  };
-
-  template <uint16_t MaxThreadCnt, uint16_t MaxNestCntPerThread, int64_t MaxWaitingCntPerThread>
+  template <uint16_t MaxThreadCnt, uint16_t MaxNestCntPerThread>
   class HALHazardVersionT {
-    typedef hazard_version::ThreadStoreT<MaxNestCntPerThread, MaxWaitingCntPerThread> TS;
+    typedef hazard_version::ThreadStoreT<MaxNestCntPerThread> TS;
     public:
       HALHazardVersionT();
       ~HALHazardVersionT();
@@ -104,7 +110,7 @@ namespace hazard_version {
       void retire();
     private:
       int get_thread_store_(TS *&ts, uint16_t *tid);
-      uint64_t get_min_version_(const bool flush);
+      uint64_t get_min_version_(const bool force_flush);
     private:
       pthread_spinlock_t lock_;
       uint64_t version_;
@@ -115,81 +121,73 @@ namespace hazard_version {
       int64_t curr_min_version_timestamp_;
   };
 
-  typedef HALHazardVersionT<HAL_MAX_THREAD_COUNT, 16, 64> HALHazardVersion;
+  typedef HALHazardVersionT<HAL_MAX_THREAD_COUNT, 16> HALHazardVersion;
 
   ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace hazard_version {
 
   template <typename T>
-  T *remove_from_slist(T *node, T *&head) {
-    T *node2remove = NULL;
-    if (NULL != node->next_) {
-      node2remove = node->next_;
-      T tmp = *node;
-      *node = *node->next_;
-      *node2remove = tmp;
-    } else {
-      node2remove = node;
-      head = NULL;
+  void remove_from_dlist(T *node, T *&head) {
+    if (node == head) {
+      head = node->next_;
     }
-    return node2remove;
+    if (NULL != node->prev_) {
+      node->prev_->next_ = node->next_;
+    }
+    if (NULL != node->next_) {
+      node->next_->prev_ = node->prev_;
+    }
   }
 
-  template <uint16_t NestSize, int64_t NodeCap>
-  ThreadStoreT<NestSize, NodeCap>::ThreadStoreT() 
+  template <uint16_t NestSize>
+  ThreadStoreT<NestSize>::ThreadStoreT() 
     : enabled_(false),
       version_free_list_(NULL),
       version_using_list_(NULL),
-      hazard_free_list_(NULL),
       hazard_waiting_list_(NULL),
       hazard_waiting_count_(0),
       next_(NULL) {
     pthread_spin_init(&lock_, PTHREAD_PROCESS_PRIVATE);
     memset(version_nodes_, 0, sizeof(version_nodes_));
-    memset(hazard_nodes_, 0, sizeof(hazard_nodes_));
     for (uint16_t i = 0; i < NestSize; i++) {
       version_nodes_[i].next_ = version_free_list_;
       version_nodes_[i].pos_ = i;
       version_free_list_ = &version_nodes_[i];
     }
-    for (int64_t i = 0; i < NodeCap; i++) {
-      hazard_nodes_[i].next_ = hazard_free_list_;
-      hazard_free_list_ = &hazard_nodes_[i];
-    }
   }
 
-  template <uint16_t NestSize, int64_t NodeCap>
-  ThreadStoreT<NestSize, NodeCap>::~ThreadStoreT() {
+  template <uint16_t NestSize>
+  ThreadStoreT<NestSize>::~ThreadStoreT() {
     while (NULL != hazard_waiting_list_) {
-      hazard_waiting_list_->node_->retire();
-      hazard_waiting_list_ = hazard_waiting_list_->next_;
+      hazard_waiting_list_->retire();
+      hazard_waiting_list_ = hazard_waiting_list_->get_next();
     }
     pthread_spin_destroy(&lock_);
   }
 
-  template <uint16_t NestSize, int64_t NodeCap>
-  void ThreadStoreT<NestSize, NodeCap>::set_enabled() {
+  template <uint16_t NestSize>
+  void ThreadStoreT<NestSize>::set_enabled() {
     enabled_ = true;
   }
 
-  template <uint16_t NestSize, int64_t NodeCap>
-  bool ThreadStoreT<NestSize, NodeCap>::is_enabled() const {
+  template <uint16_t NestSize>
+  bool ThreadStoreT<NestSize>::is_enabled() const {
     return enabled_;
   }
 
-  template <uint16_t NestSize, int64_t NodeCap>
-  void ThreadStoreT<NestSize, NodeCap>::set_next(TS *ts) {
+  template <uint16_t NestSize>
+  void ThreadStoreT<NestSize>::set_next(TS *ts) {
     next_ = ts;
   }
 
-  template <uint16_t NestSize, int64_t NodeCap>
-  ThreadStoreT<NestSize, NodeCap> *ThreadStoreT<NestSize, NodeCap>::get_next() const {
+  template <uint16_t NestSize>
+  ThreadStoreT<NestSize> *ThreadStoreT<NestSize>::get_next() const {
     return next_;
   }
 
-  template <uint16_t NestSize, int64_t NodeCap>
-  int ThreadStoreT<NestSize, NodeCap>::acquire(const uint64_t version, VersionHandle &handle) {
+  template <uint16_t NestSize>
+  int ThreadStoreT<NestSize>::acquire(const uint64_t version, VersionHandle &handle) {
     int ret = HAL_SUCCESS;
     pthread_spin_lock(&lock_);
     if (NULL == version_free_list_) {
@@ -201,7 +199,11 @@ namespace hazard_version {
 
       version_node->version_ = version;
 
+      version_node->prev_ = NULL;
       version_node->next_ = version_using_list_;
+      if (NULL != version_using_list_) {
+        version_using_list_->prev_ = version_node;
+      }
       version_using_list_ = version_node;
 
       handle.pos_ = version_node->pos_;
@@ -211,8 +213,8 @@ namespace hazard_version {
     return ret;
   }
 
-  template <uint16_t NestSize, int64_t NodeCap>
-  void ThreadStoreT<NestSize, NodeCap>::release(const VersionHandle &handle) {
+  template <uint16_t NestSize>
+  void ThreadStoreT<NestSize>::release(const VersionHandle &handle) {
     pthread_spin_lock(&lock_);
     if (NestSize <= handle.pos_) {
       LOG_WARN(CLIB, "invalid handle, pos=%hu", handle.pos_);
@@ -220,75 +222,62 @@ namespace hazard_version {
       LOG_WARN(CLIB, "invalid handle, seq=%u", handle.seq_);
     } else {
       __sync_add_and_fetch(&version_nodes_[handle.pos_].seq_, 1);
-      VersionNode *node2free = remove_from_slist(&version_nodes_[handle.pos_], version_using_list_);
-      node2free->next_ = version_free_list_;
-      version_free_list_ = node2free;
+      remove_from_dlist(&version_nodes_[handle.pos_], version_using_list_);
+      version_nodes_[handle.pos_].next_ = version_free_list_;
+      version_free_list_ = &version_nodes_[handle.pos_];
     }
     pthread_spin_unlock(&lock_);
   }
 
-  template <uint16_t NestSize, int64_t NodeCap>
-  int ThreadStoreT<NestSize, NodeCap>::add_node(const uint64_t version, HALHazardNodeI *node) {
+  template <uint16_t NestSize>
+  int ThreadStoreT<NestSize>::add_node(const uint64_t version, HALHazardNodeI *node) {
     int ret = HAL_SUCCESS;
     pthread_spin_lock(&lock_);
-    if (NULL == hazard_free_list_) {
-      LOG_WARN(CLIB, "no hazard node available");
-      ret = HAL_OUT_OF_RESOURCES;
-    } else {
-      HazardNode *hazard_node = hazard_free_list_;
-      hazard_free_list_ = hazard_free_list_->next_;
-
-      hazard_node->version_ = version;
-      hazard_node->node_ = node;
-
-      hazard_node->next_ = hazard_waiting_list_;
-      hazard_waiting_list_ = hazard_node;
-      
-      hazard_waiting_count_++;
-    }
+    node->set_version(version);
+    node->set_next(hazard_waiting_list_);
+    hazard_waiting_list_ = node;
+    hazard_waiting_count_++;
     pthread_spin_unlock(&lock_);
     return ret;
   }
 
-  template <uint16_t NestSize, int64_t NodeCap>
-  int64_t ThreadStoreT<NestSize, NodeCap>::get_node_count() const {
+  template <uint16_t NestSize>
+  int64_t ThreadStoreT<NestSize>::get_node_count() const {
     return hazard_waiting_count_;
   }
 
-  template <uint16_t NestSize, int64_t NodeCap>
-  void ThreadStoreT<NestSize, NodeCap>::retire(const uint64_t version) {
-    HazardNode *list2retire = NULL;
+  template <uint16_t NestSize>
+  void ThreadStoreT<NestSize>::retire(const uint64_t version) {
+    HALHazardNodeI *list2retire = NULL;
 
     pthread_spin_lock(&lock_);
-    HazardNode pseudo_head;
-    pseudo_head.next_ = hazard_waiting_list_;
-    HazardNode *iter = &pseudo_head;
-    while (NULL != iter->next_) {
-      if (iter->next_->version_ < version) {
-        HazardNode *tmp = iter->next_;
-        iter->next_ = iter->next_->next_;
+    DummyHazardNode pseudo_head;
+    pseudo_head.set_next(hazard_waiting_list_);
+    HALHazardNodeI *iter = &pseudo_head;
+    while (NULL != iter->get_next()) {
+      if (iter->get_next()->get_version() < version) {
+        HALHazardNodeI *tmp = iter->get_next();
+        iter->set_next(iter->get_next()->get_next());
 
-        tmp->next_ = list2retire;
+        tmp->set_next(list2retire);
         list2retire = tmp;
+        hazard_waiting_count_--;
       } else {
-        iter = iter->next_;
+        iter = iter->get_next();
       }
     }
-    hazard_waiting_list_ = pseudo_head.next_;
+    hazard_waiting_list_ = pseudo_head.get_next();
     pthread_spin_unlock(&lock_);
 
     while (NULL != list2retire) {
-      HazardNode *node2retire = list2retire;
-      list2retire = list2retire->next_;
-
-      node2retire->node_->retire();
-      node2retire->next_ = hazard_free_list_;
-      hazard_free_list_ = node2retire;
+      HALHazardNodeI *node2retire = list2retire;
+      list2retire = list2retire->get_next();
+      node2retire->retire();
     }
   }
 
-  template <uint16_t NestSize, int64_t NodeCap>
-  uint64_t ThreadStoreT<NestSize, NodeCap>::get_min_version() {
+  template <uint16_t NestSize>
+  uint64_t ThreadStoreT<NestSize>::get_min_version() {
     uint64_t ret = UINT64_MAX;
     pthread_spin_lock(&lock_);
     VersionNode *iter = version_using_list_;
@@ -305,8 +294,8 @@ namespace hazard_version {
 
   ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-  template <uint16_t MaxThreadCnt, uint16_t MaxNestCntPerThread, int64_t MaxWaitingCntPerThread>
-  HALHazardVersionT<MaxThreadCnt, MaxNestCntPerThread, MaxWaitingCntPerThread>::HALHazardVersionT()
+  template <uint16_t MaxThreadCnt, uint16_t MaxNestCntPerThread>
+  HALHazardVersionT<MaxThreadCnt, MaxNestCntPerThread>::HALHazardVersionT()
     : version_(0), 
       thread_list_(NULL),
       curr_min_version_(0),
@@ -314,13 +303,13 @@ namespace hazard_version {
     pthread_spin_init(&lock_, PTHREAD_PROCESS_PRIVATE);
   }
 
-  template <uint16_t MaxThreadCnt, uint16_t MaxNestCntPerThread, int64_t MaxWaitingCntPerThread>
-  HALHazardVersionT<MaxThreadCnt, MaxNestCntPerThread, MaxWaitingCntPerThread>::~HALHazardVersionT() {
+  template <uint16_t MaxThreadCnt, uint16_t MaxNestCntPerThread>
+  HALHazardVersionT<MaxThreadCnt, MaxNestCntPerThread>::~HALHazardVersionT() {
     pthread_spin_destroy(&lock_);
   }
 
-  template <uint16_t MaxThreadCnt, uint16_t MaxNestCntPerThread, int64_t MaxWaitingCntPerThread>
-  int HALHazardVersionT<MaxThreadCnt, MaxNestCntPerThread, MaxWaitingCntPerThread>::add_node(HALHazardNodeI *node) {
+  template <uint16_t MaxThreadCnt, uint16_t MaxNestCntPerThread>
+  int HALHazardVersionT<MaxThreadCnt, MaxNestCntPerThread>::add_node(HALHazardNodeI *node) {
     int ret = HAL_SUCCESS;
     TS *ts = NULL;
     if (NULL == node) {
@@ -328,26 +317,16 @@ namespace hazard_version {
       ret = HAL_INVALID_PARAM;
     } else if (HAL_SUCCESS != (ret = get_thread_store_(ts, NULL))) {
       LOG_WARN(CLIB, "get_thread_store_ fail, ret=%d", ret);
+    } else if (HAL_SUCCESS != (ret = ts->add_node(__sync_fetch_and_add(&version_, 1), node))) {
+      LOG_WARN(CLIB, "add_node fail, ret=%d", ret);
     } else {
-      bool flush_min_version = false;
-      for (int64_t i = 0; i < 3; i++) {
-        if (HAL_OUT_OF_RESOURCES == ret) {
-          ts->retire(get_min_version_(flush_min_version));
-          flush_min_version = true;
-        }
-        if (HAL_SUCCESS != (ret = ts->add_node(__sync_fetch_and_add(&version_, 1), node))
-            && HAL_OUT_OF_RESOURCES == ret) {
-          continue;
-        } else {
-          break;
-        }
-      }
+      // do nothing
     }
     return ret;
   }
 
-  template <uint16_t MaxThreadCnt, uint16_t MaxNestCntPerThread, int64_t MaxWaitingCntPerThread>
-  int HALHazardVersionT<MaxThreadCnt, MaxNestCntPerThread, MaxWaitingCntPerThread>::acquire(uint64_t &handle) {
+  template <uint16_t MaxThreadCnt, uint16_t MaxNestCntPerThread>
+  int HALHazardVersionT<MaxThreadCnt, MaxNestCntPerThread>::acquire(uint64_t &handle) {
     int ret = HAL_SUCCESS;
     TS *ts = NULL;
     hazard_version::VersionHandle version_handle(0);
@@ -370,18 +349,21 @@ namespace hazard_version {
     return ret;
   }
 
-  template <uint16_t MaxThreadCnt, uint16_t MaxNestCntPerThread, int64_t MaxWaitingCntPerThread>
-  void HALHazardVersionT<MaxThreadCnt, MaxNestCntPerThread, MaxWaitingCntPerThread>::release(const uint64_t handle) {
+  template <uint16_t MaxThreadCnt, uint16_t MaxNestCntPerThread>
+  void HALHazardVersionT<MaxThreadCnt, MaxNestCntPerThread>::release(const uint64_t handle) {
     hazard_version::VersionHandle version_handle(handle);
     if (MaxThreadCnt > version_handle.tid_) {
       TS *ts = &threads_[version_handle.tid_];
       ts->release(version_handle);
-      get_min_version_(false);
+      if (ThreadWaitingThreshold < ts->get_node_count()) {
+        uint64_t min_version = get_min_version_(false);
+        ts->retire(min_version);
+      }
     }
   }
 
-  template <uint16_t MaxThreadCnt, uint16_t MaxNestCntPerThread, int64_t MaxWaitingCntPerThread>
-  int HALHazardVersionT<MaxThreadCnt, MaxNestCntPerThread, MaxWaitingCntPerThread>::get_thread_store_(TS *&ts, uint16_t *tid) {
+  template <uint16_t MaxThreadCnt, uint16_t MaxNestCntPerThread>
+  int HALHazardVersionT<MaxThreadCnt, MaxNestCntPerThread>::get_thread_store_(TS *&ts, uint16_t *tid) {
     int ret = HAL_SUCCESS;
     int64_t tn = gettn();
     if (MaxThreadCnt <= tn) {
@@ -405,10 +387,10 @@ namespace hazard_version {
     return ret;
   }
 
-  template <uint16_t MaxThreadCnt, uint16_t MaxNestCntPerThread, int64_t MaxWaitingCntPerThread>
-  uint64_t HALHazardVersionT<MaxThreadCnt, MaxNestCntPerThread, MaxWaitingCntPerThread>::get_min_version_(const bool flush) {
+  template <uint16_t MaxThreadCnt, uint16_t MaxNestCntPerThread>
+  uint64_t HALHazardVersionT<MaxThreadCnt, MaxNestCntPerThread>::get_min_version_(const bool force_flush) {
     uint64_t ret = 0;
-    if (!flush
+    if (!force_flush
         && 0 != (ret = ATOMIC_LOAD(&curr_min_version_))
         && (ATOMIC_LOAD(&curr_min_version_timestamp_) + GetMinVersionIntervalUS) > get_cur_microseconds_time()) {
       // from cache
@@ -429,8 +411,8 @@ namespace hazard_version {
     return ret;
   }
 
-  template <uint16_t MaxThreadCnt, uint16_t MaxNestCntPerThread, int64_t MaxWaitingCntPerThread>
-  void HALHazardVersionT<MaxThreadCnt, MaxNestCntPerThread, MaxWaitingCntPerThread>::retire() {
+  template <uint16_t MaxThreadCnt, uint16_t MaxNestCntPerThread>
+  void HALHazardVersionT<MaxThreadCnt, MaxNestCntPerThread>::retire() {
     uint64_t min_version = get_min_version_(true);
     TS *iter = ATOMIC_LOAD(&thread_list_);
     while (NULL != iter) {
