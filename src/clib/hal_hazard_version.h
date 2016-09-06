@@ -71,8 +71,8 @@ namespace hazard_version {
       void release(const VersionHandle &handle);
 
       int add_node(const uint64_t version, HALHazardNodeI *node);
-      int64_t get_node_count() const;
-      void retire(const uint64_t version);
+      int64_t get_hazard_waiting_count() const;
+      int64_t retire(const uint64_t version);
 
       uint64_t get_min_version();
     private:
@@ -116,6 +116,8 @@ namespace hazard_version {
       uint64_t version_;
       TS threads_[MaxThreadCnt];
       TS *thread_list_;
+      int64_t thread_count_;
+      int64_t hazard_waiting_count_;
 
       uint64_t curr_min_version_;
       int64_t curr_min_version_timestamp_;
@@ -242,12 +244,13 @@ namespace hazard_version {
   }
 
   template <uint16_t NestSize>
-  int64_t ThreadStoreT<NestSize>::get_node_count() const {
+  int64_t ThreadStoreT<NestSize>::get_hazard_waiting_count() const {
     return hazard_waiting_count_;
   }
 
   template <uint16_t NestSize>
-  void ThreadStoreT<NestSize>::retire(const uint64_t version) {
+  int64_t ThreadStoreT<NestSize>::retire(const uint64_t version) {
+    int64_t ret = 0;
     HALHazardNodeI *list2retire = NULL;
 
     pthread_spin_lock(&lock_);
@@ -273,7 +276,10 @@ namespace hazard_version {
       HALHazardNodeI *node2retire = list2retire;
       list2retire = list2retire->get_next();
       node2retire->retire();
+      ret++;
     }
+
+    return ret;
   }
 
   template <uint16_t NestSize>
@@ -298,6 +304,8 @@ namespace hazard_version {
   HALHazardVersionT<MaxThreadCnt, MaxNestCntPerThread>::HALHazardVersionT()
     : version_(0), 
       thread_list_(NULL),
+      thread_count_(0),
+      hazard_waiting_count_(0),
       curr_min_version_(0),
       curr_min_version_timestamp_(0) {
     pthread_spin_init(&lock_, PTHREAD_PROCESS_PRIVATE);
@@ -320,7 +328,7 @@ namespace hazard_version {
     } else if (HAL_SUCCESS != (ret = ts->add_node(__sync_fetch_and_add(&version_, 1), node))) {
       LOG_WARN(CLIB, "add_node fail, ret=%d", ret);
     } else {
-      // do nothing
+      __sync_add_and_fetch(&hazard_waiting_count_, 1);
     }
     return ret;
   }
@@ -355,9 +363,12 @@ namespace hazard_version {
     if (MaxThreadCnt > version_handle.tid_) {
       TS *ts = &threads_[version_handle.tid_];
       ts->release(version_handle);
-      if (ThreadWaitingThreshold < ts->get_node_count()) {
+      if (ThreadWaitingThreshold < ts->get_hazard_waiting_count()) {
         uint64_t min_version = get_min_version_(false);
-        ts->retire(min_version);
+        int64_t retired_count = ts->retire(min_version);
+        __sync_add_and_fetch(&hazard_waiting_count_, -retired_count);
+      } else if (ThreadWaitingThreshold < (hazard_waiting_count_ / thread_count_)) {
+        retire();
       }
     }
   }
@@ -380,6 +391,7 @@ namespace hazard_version {
           ts->set_enabled();
           ts->set_next(ATOMIC_LOAD(&thread_list_));
           ATOMIC_STORE(&thread_list_, ts);
+          __sync_add_and_fetch(&thread_count_, 1);
         }
         pthread_spin_unlock(&lock_);
       }
@@ -407,7 +419,7 @@ namespace hazard_version {
       ATOMIC_STORE(&curr_min_version_, ret);
       ATOMIC_STORE(&curr_min_version_timestamp_, get_cur_microseconds_time());
     }
-    LOG_DEBUG(CLIB, "get_min_version_=%lu", ret);
+    //LOG_DEBUG(CLIB, "get_min_version_=%lu", ret);
     return ret;
   }
 
@@ -416,7 +428,8 @@ namespace hazard_version {
     uint64_t min_version = get_min_version_(true);
     TS *iter = ATOMIC_LOAD(&thread_list_);
     while (NULL != iter) {
-      iter->retire(min_version);
+      int64_t retired_count = iter->retire(min_version);
+      __sync_add_and_fetch(&hazard_waiting_count_, -retired_count);
       iter = iter->get_next();
     }
   }
