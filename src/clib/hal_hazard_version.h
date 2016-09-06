@@ -10,7 +10,7 @@
 #include "clib/hal_atomic.h"
 #include "clib/hal_base_log.h"
 
-#define GetMinVersionIntervalUS 1000000
+#define GetMinVersionIntervalUS 100000
 #define ThreadWaitingThreshold  64
 
 namespace libhalog {
@@ -108,11 +108,12 @@ namespace hazard_version {
       int acquire(uint64_t &handle);
       void release(const uint64_t handle);
       void retire();
+      int64_t get_hazard_waiting_count() const;
     private:
       int get_thread_store_(TS *&ts, uint16_t *tid);
       uint64_t get_min_version_(const bool force_flush);
     private:
-      pthread_spinlock_t lock_;
+      pthread_spinlock_t thread_lock_;
       uint64_t version_;
       TS threads_[MaxThreadCnt];
       TS *thread_list_;
@@ -253,24 +254,25 @@ namespace hazard_version {
     int64_t ret = 0;
     HALHazardNodeI *list2retire = NULL;
 
-    pthread_spin_lock(&lock_);
-    DummyHazardNode pseudo_head;
-    pseudo_head.set_next(hazard_waiting_list_);
-    HALHazardNodeI *iter = &pseudo_head;
-    while (NULL != iter->get_next()) {
-      if (iter->get_next()->get_version() < version) {
-        HALHazardNodeI *tmp = iter->get_next();
-        iter->set_next(iter->get_next()->get_next());
+    if (0 == pthread_spin_trylock(&lock_)) {
+      DummyHazardNode pseudo_head;
+      pseudo_head.set_next(hazard_waiting_list_);
+      HALHazardNodeI *iter = &pseudo_head;
+      while (NULL != iter->get_next()) {
+        if (iter->get_next()->get_version() < version) {
+          HALHazardNodeI *tmp = iter->get_next();
+          iter->set_next(iter->get_next()->get_next());
 
-        tmp->set_next(list2retire);
-        list2retire = tmp;
-        hazard_waiting_count_--;
-      } else {
-        iter = iter->get_next();
+          tmp->set_next(list2retire);
+          list2retire = tmp;
+          hazard_waiting_count_--;
+        } else {
+          iter = iter->get_next();
+        }
       }
+      hazard_waiting_list_ = pseudo_head.get_next();
+      pthread_spin_unlock(&lock_);
     }
-    hazard_waiting_list_ = pseudo_head.get_next();
-    pthread_spin_unlock(&lock_);
 
     while (NULL != list2retire) {
       HALHazardNodeI *node2retire = list2retire;
@@ -308,12 +310,12 @@ namespace hazard_version {
       hazard_waiting_count_(0),
       curr_min_version_(0),
       curr_min_version_timestamp_(0) {
-    pthread_spin_init(&lock_, PTHREAD_PROCESS_PRIVATE);
+    pthread_spin_init(&thread_lock_, PTHREAD_PROCESS_PRIVATE);
   }
 
   template <uint16_t MaxThreadCnt, uint16_t MaxNestCntPerThread>
   HALHazardVersionT<MaxThreadCnt, MaxNestCntPerThread>::~HALHazardVersionT() {
-    pthread_spin_destroy(&lock_);
+    pthread_spin_destroy(&thread_lock_);
   }
 
   template <uint16_t MaxThreadCnt, uint16_t MaxNestCntPerThread>
@@ -367,7 +369,7 @@ namespace hazard_version {
         uint64_t min_version = get_min_version_(false);
         int64_t retired_count = ts->retire(min_version);
         __sync_add_and_fetch(&hazard_waiting_count_, -retired_count);
-      } else if (ThreadWaitingThreshold < (hazard_waiting_count_ / thread_count_)) {
+      } else if (ThreadWaitingThreshold < (ATOMIC_LOAD(&hazard_waiting_count_) / thread_count_)) {
         retire();
       }
     }
@@ -386,14 +388,14 @@ namespace hazard_version {
         *tid = (uint16_t)(tn & 0xffff);
       }
       if (!ts->is_enabled()) {
-        pthread_spin_lock(&lock_);
+        pthread_spin_lock(&thread_lock_);
         if (!ts->is_enabled()) {
           ts->set_enabled();
           ts->set_next(ATOMIC_LOAD(&thread_list_));
           ATOMIC_STORE(&thread_list_, ts);
           __sync_add_and_fetch(&thread_count_, 1);
         }
-        pthread_spin_unlock(&lock_);
+        pthread_spin_unlock(&thread_lock_);
       }
     }
     return ret;
@@ -432,6 +434,11 @@ namespace hazard_version {
       __sync_add_and_fetch(&hazard_waiting_count_, -retired_count);
       iter = iter->get_next();
     }
+  }
+
+  template <uint16_t MaxThreadCnt, uint16_t MaxNestCntPerThread>
+  int64_t HALHazardVersionT<MaxThreadCnt, MaxNestCntPerThread>::get_hazard_waiting_count() const {
+    return hazard_waiting_count_;
   }
 }
 }

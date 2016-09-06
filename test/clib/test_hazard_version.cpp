@@ -26,7 +26,7 @@ class GObject: public HALHazardNodeI {
     }
   private:
     int64_t &counter_;
-    char data_[4096];
+    char data_[64];
 };
 
 TEST(HALHazardVersion, simple) {
@@ -86,6 +86,7 @@ TEST(HALHazardVersion, simple) {
 }
 
 struct GConf {
+  bool stop;
   int64_t counter;
   int64_t read_loops;
   int64_t write_loops;
@@ -121,8 +122,18 @@ void *write_thread_func(void *data) {
   return NULL;
 }
 
+void *debug_thread_func(void *data) {
+  GConf *g_conf = (GConf*)data;
+  while (!ATOMIC_LOAD(&(g_conf->stop))) {
+    printf("hazard_waiting_count=%ld\n", g_conf->hv.get_hazard_waiting_count());
+    usleep(1000000);
+  }
+  return NULL;
+}
+
 TEST(HALHazardVersion, cc) {
   GConf g_conf;
+  g_conf.stop = false;
   g_conf.counter = 0;
   g_conf.read_loops = 10000000;
   g_conf.write_loops = 10000000;
@@ -134,6 +145,8 @@ TEST(HALHazardVersion, cc) {
   pthread_t *rpd = new pthread_t[read_count];
   pthread_t *wpd = new pthread_t[write_count];
 
+  pthread_t dpd;
+  pthread_create(&dpd, NULL, debug_thread_func, &g_conf);
   for (int64_t i = 0; i < read_count; i++) {
     pthread_create(&rpd[i], NULL, read_thread_func, &g_conf);
   }
@@ -146,11 +159,16 @@ TEST(HALHazardVersion, cc) {
   for (int64_t i = 0; i < write_count; i++) {
     pthread_join(wpd[i], NULL);
   }
+  ATOMIC_STORE(&(g_conf.stop), true);
+  pthread_join(dpd, NULL);
 
   delete[] wpd;
   delete[] rpd;
   delete g_conf.v;
 
+  printf("counter=%ld\n", g_conf.counter);
+  g_conf.hv.retire();
+  printf("counter=%ld\n", g_conf.counter);
   assert(0 == g_conf.counter);
 }
 
