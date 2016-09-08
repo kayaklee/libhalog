@@ -3,6 +3,7 @@
 
 #include <unistd.h>
 #include "clib/hal_hazard_version.h"
+#include "clib/hal_util.h"
 #include <gtest/gtest.h>
 
 using namespace libhalog;
@@ -12,21 +13,23 @@ class GObject: public HALHazardNodeI {
   public:
     GObject(int64_t &counter) : counter_(counter) {
       __sync_add_and_fetch(&counter_, 1);
-      memset(data_, '^', sizeof(data_));
+      data_[0] = '^';
+      //memset(data_, '^', sizeof(data_));
     }
-    ~GObject() {
-      memset(data_, '$', sizeof(data_));
-      __sync_add_and_fetch(&counter_, -1);
+    virtual ~GObject() {
     }
     bool operator== (const GObject &o) const {
-      return (0 == memcmp(data_, o.data_, sizeof(data_)));
+      return (data_[0] == o.data_[0]);
+      //return (0 == memcmp(data_, o.data_, sizeof(data_)));
     }
-    void retire() {
-      delete this;
+    virtual void retire() {
+      data_[0] = '$';
+      //memset(data_, '$', sizeof(data_));
+      __sync_add_and_fetch(&counter_, -1);
     }
-  private:
+  protected:
     int64_t &counter_;
-    char data_[64];
+    char data_[1];
 };
 
 TEST(HALHazardVersion, simple) {
@@ -69,19 +72,11 @@ TEST(HALHazardVersion, simple) {
 
   // test acquire in one thread over limit
   for (int64_t n = 0; n < 2; n++) {
-    uint64_t handles[16];
-    for (int64_t i = 0; i < 16; i++) {
-      int ret = hv.acquire(handles[i]);
-      EXPECT_EQ(HAL_SUCCESS, ret);
-      printf("%lx\n", handles[i]);
-    }
     int ret = hv.acquire(handle);
-    EXPECT_EQ(HAL_OUT_OF_RESOURCES, ret);
-    printf("%lx\n", handle);
-    for (int64_t i = 0; i < 16; i++) {
-      hv.release(handles[i]);
-      hv.release(handles[i]);
-    }
+    EXPECT_EQ(HAL_SUCCESS, ret);
+    ret = hv.acquire(handle);
+    EXPECT_EQ(HAL_EBUSY, ret);
+    hv.release(handle);
   }
 }
 
@@ -94,27 +89,43 @@ struct GConf {
   HALHazardVersion hv;
 };
 
+void set_cpu_affinity() {
+  int64_t cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+  cpu_set_t cpuset;
+  CPU_ZERO(&cpuset);
+  CPU_SET(gettn() % cpu_count, &cpuset);
+  if (0 == pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset)) {
+    LOG_INFO(CLIB, "pthread_setaffinity_np succ %ld", gettn() % cpu_count);
+  } else {
+    LOG_WARN(CLIB, "pthread_setaffinity_np fail %ld", gettn() % cpu_count);
+  }
+}
+
 void *read_thread_func(void *data) {
+  set_cpu_affinity();
   GConf *g_conf = (GConf*)data;
   GObject checker(g_conf->counter);
   for (int64_t i = 0; i < g_conf->read_loops; i++) {
     uint64_t handle;
-    g_conf->hv.acquire(handle);
+    int ret = g_conf->hv.acquire(handle);
+    assert(HAL_SUCCESS == ret);
     GObject *v = ATOMIC_LOAD(&(g_conf->v));
     assert(*v == checker);
     g_conf->hv.release(handle);
   }
+  checker.retire();
   return NULL;
 }
 
 void *write_thread_func(void *data) {
+  set_cpu_affinity();
   GConf *g_conf = (GConf*)data;
-  GObject checker(g_conf->counter);
+  GObject *vs = (GObject*)malloc(g_conf->write_loops * sizeof(GObject));
   for (int64_t i = 0; i < g_conf->write_loops; i++) {
-    GObject *v = new GObject(g_conf->counter);
+    GObject *v = new(&vs[i]) GObject(g_conf->counter);
     GObject *curr = ATOMIC_LOAD(&(g_conf->v));
     GObject *old = curr;
-    while (old != (curr = __sync_val_compare_and_swap(&(g_conf->v), curr, v))) {
+    while (old != (curr = __sync_val_compare_and_swap(&(g_conf->v), old, v))) {
       old = curr;
     }
     g_conf->hv.add_node(old);
@@ -132,11 +143,15 @@ void *debug_thread_func(void *data) {
 }
 
 TEST(HALHazardVersion, cc) {
+  int64_t memory = sysconf(_SC_PHYS_PAGES) * sysconf(_SC_PAGE_SIZE);
+  int64_t available = memory * 4 / 10;
+  int64_t count = available / sizeof(GObject);
+
   GConf g_conf;
   g_conf.stop = false;
   g_conf.counter = 0;
-  g_conf.read_loops = 10000000;
-  g_conf.write_loops = 10000000;
+  g_conf.read_loops = std::min(10000000L, count);
+  g_conf.write_loops = std::min(10000000L, count);
   g_conf.v = new GObject(g_conf.counter);
 
   int64_t cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
@@ -164,7 +179,7 @@ TEST(HALHazardVersion, cc) {
 
   delete[] wpd;
   delete[] rpd;
-  delete g_conf.v;
+  g_conf.v->retire();
 
   printf("counter=%ld\n", g_conf.counter);
   g_conf.hv.retire();

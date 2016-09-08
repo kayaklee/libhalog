@@ -23,7 +23,7 @@ echo 'cleaning...'
   ;;
 *)
   set -x
-  aclocal
+  aclocal -I /usr/share/aclocal
   libtoolize --force --copy --automake
   autoconf --force
   automake --foreign --copy --add-missing -Woverride

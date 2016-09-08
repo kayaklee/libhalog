@@ -11,7 +11,7 @@ AC_PROG_CC
 AC_PROG_LIBTOOL
 AC_LANG([C++])
 
-CXXFLAGS="-g -std=c++0x -fPIC -finline-functions \
+CXXFLAGS="-g -std=c++0x -fPIC -finline-functions -O2 \
     -Wall -Werror -Wextra -Wunused-parameter -Wformat -Wconversion \
     -fno-strict-aliasing \
     -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS"

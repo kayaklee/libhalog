@@ -49,23 +49,19 @@ namespace clib {
       }
       void set_lock(HALSpinRWLock *lock) {lock_ = lock;}
     private:
-      HALRLockGuard(const HALRLockGuard &other);
-    private:
       HALSpinRWLock *lock_;
   };
 
-  class HALLockGuard {
+  class HALWLockGuard {
     public:
-      HALLockGuard() : lock_(NULL) {}
-      ~HALLockGuard() {
+      HALWLockGuard() : lock_(NULL) {}
+      ~HALWLockGuard() {
         if (NULL != lock_) {
           lock_->unlock();
           lock_ = NULL;
         }
       }
       void set_lock(HALSpinRWLock *lock) {lock_ = lock;}
-    private:
-      HALLockGuard(const HALRLockGuard &other);
     private:
       HALSpinRWLock *lock_;
   };
