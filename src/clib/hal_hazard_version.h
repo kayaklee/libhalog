@@ -13,19 +13,24 @@
 
 namespace libhalog {
 namespace clib {
+namespace hazard_version {
+  class ThreadStore;
+}
   class HALHazardNodeI {
+    friend class hazard_version::ThreadStore;
     public:
-      HALHazardNodeI() : next_(NULL), version_(UINT64_MAX) {}
+      HALHazardNodeI() : __next__(NULL), __version__(UINT64_MAX) {}
       virtual ~HALHazardNodeI() {}
-      virtual void retire() = 0;
     public:
-      void set_next(HALHazardNodeI *next) { assert(this != next); next_ = next; }
-      HALHazardNodeI *get_next() const {return next_;}
-      void set_version(const uint64_t version) {version_ = version;}
-      uint64_t get_version() const {return version_;}
+      virtual void retire() = 0;
     private:
-      HALHazardNodeI *next_;
-      uint64_t version_;
+      void __set_next__(HALHazardNodeI *next) { assert(this != next); __next__ = next; }
+      HALHazardNodeI *__get_next__() const {return __next__;}
+      void __set_version__(const uint64_t version) {__version__ = version;}
+      uint64_t __get_version__() const {return __version__;}
+    private:
+      HALHazardNodeI *__next__;
+      uint64_t __version__;
   };
 
 namespace hazard_version {
@@ -139,7 +144,7 @@ namespace hazard_version {
   ThreadStore::~ThreadStore() {
     while (NULL != hazard_waiting_list_) {
       hazard_waiting_list_->retire();
-      hazard_waiting_list_ = hazard_waiting_list_->get_next();
+      hazard_waiting_list_ = hazard_waiting_list_->__get_next__();
     }
   }
 
@@ -193,7 +198,7 @@ namespace hazard_version {
   int ThreadStore::add_node(const uint64_t version, HALHazardNodeI *node) {
     assert(tid_ == gettn());
     int ret = HAL_SUCCESS;
-    node->set_version(version);
+    node->__set_version__(version);
     add_nodes_(node, node, 1);
     return ret;
   }
@@ -211,25 +216,25 @@ namespace hazard_version {
     int64_t move_count = 0;
     int64_t retire_count = 0;
     DummyHazardNode pseudo_head;
-    pseudo_head.set_next(curr);
+    pseudo_head.__set_next__(curr);
     HALHazardNodeI *iter = &pseudo_head;
-    while (NULL != iter->get_next()) {
-      if (iter->get_next()->get_version() <= version) {
+    while (NULL != iter->__get_next__()) {
+      if (iter->__get_next__()->__get_version__() <= version) {
         retire_count++;
-        HALHazardNodeI *tmp = iter->get_next();
-        iter->set_next(iter->get_next()->get_next());
+        HALHazardNodeI *tmp = iter->__get_next__();
+        iter->__set_next__(iter->__get_next__()->__get_next__());
 
-        tmp->set_next(list2retire);
+        tmp->__set_next__(list2retire);
         list2retire = tmp;
       } else {
         move_count++;
-        iter = iter->get_next();
+        iter = iter->__get_next__();
       }
     }
 
     HALHazardNodeI *move_list_head = NULL;
     HALHazardNodeI *move_list_tail = NULL;
-    if (NULL != (move_list_head = pseudo_head.get_next())) {
+    if (NULL != (move_list_head = pseudo_head.__get_next__())) {
       move_list_tail = iter;
     }
     node_receiver.add_nodes_(move_list_head, move_list_tail, move_count);
@@ -237,7 +242,7 @@ namespace hazard_version {
 
     while (NULL != list2retire) {
       HALHazardNodeI *node2retire = list2retire;
-      list2retire = list2retire->get_next();
+      list2retire = list2retire->__get_next__();
       node2retire->retire();
     }
     return retire_count;
@@ -257,10 +262,10 @@ namespace hazard_version {
     if (0 < count) {
       HALHazardNodeI *curr = ATOMIC_LOAD(&hazard_waiting_list_);
       HALHazardNodeI *old = curr;
-      tail->set_next(curr);
+      tail->__set_next__(curr);
       while (old != (curr = __sync_val_compare_and_swap(&hazard_waiting_list_, old, head))) {
         old = curr;
-        tail->set_next(old);
+        tail->__set_next__(old);
       }
       __sync_add_and_fetch(&hazard_waiting_count_, count);
     }
@@ -286,6 +291,7 @@ namespace hazard_version {
 
   template <uint16_t MaxThreadCnt>
   HALHazardVersionT<MaxThreadCnt>::~HALHazardVersionT() {
+    retire();
   }
 
   template <uint16_t MaxThreadCnt>
