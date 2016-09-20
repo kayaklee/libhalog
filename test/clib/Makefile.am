@@ -17,7 +17,7 @@ bin_PROGRAMS = \
 	test_page_arena.bin \
 	test_base_log.bin
 
-test_cas = test_cas.cpp
+test_cas_bin_SOURCES = test_cas.cpp
 hv_sample_fifo_bin_SOURCES = hv_sample_fifo.cpp
 hv_sample_lifo_bin_SOURCES = hv_sample_lifo.cpp
 test_hazard_version_bin_SOURCES = test_hazard_version.cpp

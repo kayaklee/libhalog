@@ -18,7 +18,7 @@
 #define PAUSE() asm("pause\n")
 #define UNUSED(v) ((void)(v))
 
-#define ARRAYSIZE(array) ((int64_t)(sizeof(array) / sizeof(array[0])))
+#define ARRAYSIZE(array) ((int32_t)(sizeof(array) / sizeof(array[0])))
 
 namespace libhalog {
 namespace clib {
