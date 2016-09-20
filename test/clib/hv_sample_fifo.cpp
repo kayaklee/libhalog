@@ -162,8 +162,14 @@ void run_test(GConf *g_conf, const int64_t thread_count) {
   delete[] pds_consumer;
 }
 
-int main() {
-  int64_t cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+int main(const int argc, char **argv) {
+  int64_t cpu_count = 0;
+  if (1 < argc) {
+    cpu_count = atoi(argv[1]);
+  }
+  if (0 >= cpu_count) {
+    cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+  }
   int64_t producer_count = (cpu_count + 1) / 2;
 
   int64_t memory = sysconf(_SC_PHYS_PAGES) * sysconf(_SC_PAGE_SIZE);
