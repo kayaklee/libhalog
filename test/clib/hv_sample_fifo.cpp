@@ -106,17 +106,36 @@ struct GConf {
   int64_t producer_count;
 };
 
+void set_cpu_affinity() {
+  int64_t cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+  cpu_set_t cpuset;
+  CPU_ZERO(&cpuset);
+  CPU_SET(gettn() % cpu_count, &cpuset);
+  if (0 == pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset)) {
+    //LOG_INFO(CLIB, "pthread_setaffinity_np succ %ld", gettn() % cpu_count);
+  } else {
+    LOG_WARN(CLIB, "pthread_setaffinity_np fail %ld", gettn() % cpu_count);
+  }
+}
+
 void *thread_consumer(void *data) {
+  set_cpu_affinity();
   GConf *g_conf = (GConf*)data;
   QueueValue stack_value;
+  bool skip = false;
   while (true) {
     if (g_conf->stack.pop(stack_value)) {
 #ifndef DO_NOT_CHECK
       assert((stack_value.a + stack_value.b) == stack_value.sum);
 #endif
+      skip = false;
     } else {
       if (0 == ATOMIC_LOAD(&(g_conf->producer_count))) {
-        break;
+        if (skip) {
+          break;
+        } else {
+          skip = true;
+        }
       }
     }
   }
@@ -124,6 +143,7 @@ void *thread_consumer(void *data) {
 }
 
 void *thread_producer(void *data) {
+  set_cpu_affinity();
   GConf *g_conf = (GConf*)data;
   FIFONode<QueueValue> *nodes = new FIFONode<QueueValue>[g_conf->loop_times];
 #ifndef DO_NOT_CHECK
