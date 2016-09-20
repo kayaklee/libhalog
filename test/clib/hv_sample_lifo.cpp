@@ -97,17 +97,36 @@ struct GConf {
   int64_t producer_count;
 };
 
+void set_cpu_affinity() {
+  int64_t cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+  cpu_set_t cpuset;
+  CPU_ZERO(&cpuset);
+  CPU_SET(gettn() % cpu_count, &cpuset);
+  if (0 == pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset)) {
+    //LOG_INFO(CLIB, "pthread_setaffinity_np succ %ld", gettn() % cpu_count);
+  } else {
+    LOG_WARN(CLIB, "pthread_setaffinity_np fail %ld", gettn() % cpu_count);
+  }
+}
+
 void *thread_consumer(void *data) {
+  set_cpu_affinity();
   GConf *g_conf = (GConf*)data;
   StackValue stack_value;
+  bool skip = false;
   while (true) {
     if (g_conf->stack.pop(stack_value)) {
 #ifndef DO_NOT_CHECK
       assert((stack_value.a + stack_value.b) == stack_value.sum);
 #endif
+      skip = false;
     } else {
       if (0 == ATOMIC_LOAD(&(g_conf->producer_count))) {
-        break;
+        if (skip) {
+          break;
+        } else {
+          skip = true;
+        }
       }
     }
   }
@@ -115,6 +134,7 @@ void *thread_consumer(void *data) {
 }
 
 void *thread_producer(void *data) {
+  set_cpu_affinity();
   GConf *g_conf = (GConf*)data;
   LIFONode<StackValue> *nodes = new LIFONode<StackValue>[g_conf->loop_times];
 #ifndef DO_NOT_CHECK
@@ -153,8 +173,14 @@ void run_test(GConf *g_conf, const int64_t thread_count) {
   delete[] pds_consumer;
 }
 
-int main() {
-  int64_t cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+int main(const int argc, char **argv) {
+  int64_t cpu_count = 0;
+  if (1 < argc) {
+    cpu_count = atoi(argv[1]);
+  }
+  if (0 >= cpu_count) {
+    cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+  }
   int64_t producer_count = (cpu_count + 1) / 2;
 
   int64_t memory = sysconf(_SC_PHYS_PAGES) * sysconf(_SC_PAGE_SIZE);
