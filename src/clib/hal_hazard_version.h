@@ -71,6 +71,7 @@ namespace hazard_version {
     private:
       bool enabled_;
       uint16_t tid_;
+      uint64_t last_retire_version_;
 
       struct {
         uint32_t curr_seq_;
@@ -134,6 +135,7 @@ namespace hazard_version {
   ThreadStore::ThreadStore() 
     : enabled_(false),
       tid_(0),
+      last_retire_version_(0),
       curr_seq_(0),
       curr_version_(UINT64_MAX),
       hazard_waiting_list_(NULL),
@@ -205,6 +207,10 @@ namespace hazard_version {
 
   int64_t ThreadStore::retire(const uint64_t version, ThreadStore &node_receiver) {
     assert(this != &node_receiver || tid_ == gettn());
+    if (last_retire_version_ == version) {
+      return 0;
+    }
+    last_retire_version_ = version;
 
     HALHazardNodeI *curr = ATOMIC_LOAD(&hazard_waiting_list_);
     HALHazardNodeI *old = curr;
@@ -348,6 +354,7 @@ namespace hazard_version {
       } else if (thread_waiting_threshold_ * ATOMIC_LOAD(&thread_count_) < ATOMIC_LOAD(&hazard_waiting_count_)) {
         retire();
       }
+      //LOG_DEBUG(CLIB, "ts=%ld hazard_waiting_count=%ld", ts->get_hazard_waiting_count(), hazard_waiting_count_);
     }
   }
 

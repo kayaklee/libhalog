@@ -143,20 +143,21 @@ void *debug_thread_func(void *data) {
 }
 
 TEST(HALHazardVersion, cc) {
+  int64_t cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+  int64_t read_count = (cpu_count + 1) / 2;
+  int64_t write_count = (cpu_count + 1) / 2;
+
   int64_t memory = sysconf(_SC_PHYS_PAGES) * sysconf(_SC_PAGE_SIZE);
   int64_t available = memory * 4 / 10;
-  int64_t count = available / sizeof(GObject);
+  int64_t count = available / sizeof(GObject) / write_count;
 
   GConf g_conf;
   g_conf.stop = false;
   g_conf.counter = 0;
-  g_conf.read_loops = std::min(10000000L, count);
-  g_conf.write_loops = std::min(10000000L, count);
+  g_conf.read_loops = count;
+  g_conf.write_loops = count;
   g_conf.v = new GObject(g_conf.counter);
 
-  int64_t cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
-  int64_t read_count = (cpu_count + 1) / 2;
-  int64_t write_count = (cpu_count + 1) / 2;
   pthread_t *rpd = new pthread_t[read_count];
   pthread_t *wpd = new pthread_t[write_count];
 

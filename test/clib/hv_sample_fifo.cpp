@@ -10,36 +10,39 @@ using namespace libhalog;
 using namespace libhalog::clib;
 
 template <typename T>
-class LockFreeStack;
+class LockFreeQueue;
 
 template <typename T>
-class LIFONode : public HALHazardNodeI {
-  friend class LockFreeStack<T>;
+class FIFONode : public HALHazardNodeI {
+  friend class LockFreeQueue<T>;
   public:
-    LIFONode() : next_(NULL) {}
-    LIFONode(const T &v) : next_(NULL), v_(v) {}
-    ~LIFONode() {};
+    FIFONode() : next_(NULL) {}
+    FIFONode(const T &v) : next_(NULL), v_(v) {}
+    ~FIFONode() {};
   public:
     void retire() {memset(&v_, 0, sizeof(v_));}//{ delete this; }
   public:
-    void set_next(LIFONode *next) { next_ = next; }
-    LIFONode *get_next() const { return next_; }
+    void set_next(FIFONode *next) { next_ = next; }
+    FIFONode *get_next() const { return next_; }
   public:
     T get_v() { return v_; }
   private:
-    LIFONode *next_;
+    FIFONode *next_;
     T v_;
 };
 
 template <typename T>
-class LockFreeStack {
-  typedef LIFONode<T> Node;
+class LockFreeQueue {
+  typedef FIFONode<T> Node;
   public:
-    LockFreeStack() : hazard_version_(), top_(NULL) {}
-    ~LockFreeStack() {
-      while (NULL != top_) {
-        Node *tmp = top_;
-        top_ = top_->get_next();
+    LockFreeQueue() : hazard_version_(), head_(NULL) {
+      head_ = new Node();
+      tail_ = head_;
+    }
+    ~LockFreeQueue() {
+      while (NULL != head_) {
+        Node *tmp = head_;
+        head_ = head_->get_next();
         tmp->retire();
       }
     }
@@ -50,28 +53,33 @@ class LockFreeStack {
 #else
       node = new(node) Node(v);
 #endif
-      Node *curr = ATOMIC_LOAD(&top_);
+      uint64_t handle = 0;
+      hazard_version_.acquire(handle);
+      Node *curr = ATOMIC_LOAD(&tail_);
       Node *old = curr;
-      node->set_next(old);
-      while (old != (curr = __sync_val_compare_and_swap(&top_, old, node))) {
+      while (old != (curr = __sync_val_compare_and_swap(&tail_, old, node))) {
         old = curr;
-        node->set_next(old);
       }
+      curr->set_next(node);
+      hazard_version_.release(handle);
     }
     bool pop(T &v) {
       bool bret = false;
       uint64_t handle = 0;
       hazard_version_.acquire(handle);
-      Node *curr = ATOMIC_LOAD(&top_);
+      Node *curr = ATOMIC_LOAD(&head_);
       Node *old = curr;
-      while (NULL != curr && old != (curr = __sync_val_compare_and_swap(&top_, old, curr->get_next()))) {
+      Node *node = curr->get_next();
+      while (NULL != node
+          && old != (curr = __sync_val_compare_and_swap(&head_, old, node))) {
         old = curr;
+        node = curr->get_next();
       }
-      if (NULL != curr) {
+      if (NULL != node) {
 #ifdef DO_NOT_CHECK
         UNUSED(v);
 #else
-        v = curr->get_v();
+        v = node->get_v();
 #endif
         hazard_version_.add_node(curr);
         bret = true;
@@ -81,25 +89,26 @@ class LockFreeStack {
     }
   private:
     HALHazardVersion hazard_version_;
-    Node *top_ CACHE_ALIGNED;
+    Node *head_ CACHE_ALIGNED;
+    Node *tail_ CACHE_ALIGNED;
 };
 
-struct StackValue {
+struct QueueValue {
   int64_t a;
   int64_t b;
   int64_t sum;
-  StackValue() : a(0), b(0), sum(0) {};
+  QueueValue() : a(0), b(0), sum(0) {};
 };
 
 struct GConf {
-  LockFreeStack<StackValue> stack;
+  LockFreeQueue<QueueValue> stack;
   int64_t loop_times;
   int64_t producer_count;
 };
 
 void *thread_consumer(void *data) {
   GConf *g_conf = (GConf*)data;
-  StackValue stack_value;
+  QueueValue stack_value;
   while (true) {
     if (g_conf->stack.pop(stack_value)) {
 #ifndef DO_NOT_CHECK
@@ -116,11 +125,11 @@ void *thread_consumer(void *data) {
 
 void *thread_producer(void *data) {
   GConf *g_conf = (GConf*)data;
-  LIFONode<StackValue> *nodes = new LIFONode<StackValue>[g_conf->loop_times];
+  FIFONode<QueueValue> *nodes = new FIFONode<QueueValue>[g_conf->loop_times];
 #ifndef DO_NOT_CHECK
   int64_t sum_base = gettn() * g_conf->loop_times;
 #endif
-  StackValue stack_value;
+  QueueValue stack_value;
   for (int64_t i = 0; i < g_conf->loop_times; i++) {
 #ifndef DO_NOT_CHECK
     stack_value.a = sum_base + i;
@@ -159,7 +168,7 @@ int main() {
 
   int64_t memory = sysconf(_SC_PHYS_PAGES) * sysconf(_SC_PAGE_SIZE);
   int64_t available = memory * 4 / 10;
-  int64_t count = available / sizeof(LIFONode<StackValue>) / producer_count;
+  int64_t count = available / sizeof(FIFONode<QueueValue>) / producer_count;
 
   GConf g_conf;
   g_conf.loop_times = count;
