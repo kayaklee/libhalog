@@ -11,6 +11,7 @@ bin_PROGRAMS = \
 	test_cas.bin \
 	hv_sample_fifo.bin \
 	hv_sample_lifo.bin \
+	test_fixed_queue.bin \
 	test_hazard_version.bin \
 	test_btree.bin \
 	test_spin_rwlock.bin \
@@ -20,6 +21,7 @@ bin_PROGRAMS = \
 test_cas_bin_SOURCES = test_cas.cpp
 hv_sample_fifo_bin_SOURCES = hv_sample_fifo.cpp
 hv_sample_lifo_bin_SOURCES = hv_sample_lifo.cpp
+test_fixed_queue_bin_SOURCES = test_fixed_queue.cpp
 test_hazard_version_bin_SOURCES = test_hazard_version.cpp
 test_btree_bin_SOURCES = test_btree.cpp
 test_spin_rwlock_bin_SOURCES = test_spin_rwlock.cpp
