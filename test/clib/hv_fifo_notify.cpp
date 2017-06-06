@@ -227,26 +227,28 @@ void *sem_producer(void *data) {
 
 void run_test(GConf *g_conf, const int64_t thread_count, const bool use_sem) {
   pthread_t *pds_consumer = new pthread_t[thread_count];
-  pthread_t *pds_producer = new pthread_t[thread_count];
+  pthread_t pds_producer;
   g_conf->producer_count = thread_count;
   int64_t timeu = get_cur_microseconds_time();
+  if (use_sem) {
+    pthread_create(&pds_producer, NULL, sem_producer, g_conf);
+  } else {
+    pthread_create(&pds_producer, NULL, pthread_producer, g_conf);
+  }
   for (int64_t i = 0; i < thread_count; i++) {
     if (use_sem) {
       pthread_create(&pds_consumer[i], NULL, sem_consumer, g_conf);
-      pthread_create(&pds_producer[i], NULL, sem_producer, g_conf);
     } else {
       pthread_create(&pds_consumer[i], NULL, pthread_consumer, g_conf);
-      pthread_create(&pds_producer[i], NULL, pthread_producer, g_conf);
     }
   }
+  pthread_join(pds_producer, NULL);
   for (int64_t i = 0; i < thread_count; i++) {
     pthread_join(pds_consumer[i], NULL);
-    pthread_join(pds_producer[i], NULL);
   }
   timeu = get_cur_microseconds_time() - timeu;
   fprintf(stdout, "use_sem=%s threads=%ld+%ld push+pop=%ld timeu=%ld tps=%0.2f\n",
       use_sem ? "true" : "false", thread_count, thread_count, thread_count * 2 * g_conf->loop_times, timeu, 1000000.0 * (double)(thread_count * 2 * g_conf->loop_times) / (double)(timeu));
-  delete[] pds_producer;
   delete[] pds_consumer;
 }
 
