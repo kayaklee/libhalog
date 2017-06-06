@@ -1,7 +1,7 @@
 AM_CPPFLAGS = \
 	-I${top_srcdir}/src
 
-#AM_CPPFLAGS += -DDO_NOT_CHECK
+AM_CPPFLAGS += -DDO_NOT_CHECK
 
 LDADD = ${top_builddir}/src/clib/libclib.a
 
@@ -11,6 +11,7 @@ bin_PROGRAMS = \
 	test_cas.bin \
 	hv_sample_fifo.bin \
 	hv_sample_lifo.bin \
+	hv_fifo_notify.bin
 	test_fixed_queue.bin \
 	test_hazard_version.bin \
 	test_btree.bin \
@@ -21,6 +22,7 @@ bin_PROGRAMS = \
 test_cas_bin_SOURCES = test_cas.cpp
 hv_sample_fifo_bin_SOURCES = hv_sample_fifo.cpp
 hv_sample_lifo_bin_SOURCES = hv_sample_lifo.cpp
+hv_fifo_notify_bin_SOURCES = hv_fifo_notify.cpp
 test_fixed_queue_bin_SOURCES = test_fixed_queue.cpp
 test_hazard_version_bin_SOURCES = test_hazard_version.cpp
 test_btree_bin_SOURCES = test_btree.cpp
