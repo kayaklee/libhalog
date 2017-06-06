@@ -156,15 +156,19 @@ void *sem_consumer(void *data) {
   GConf *g_conf = (GConf*)data;
   QueueValue stack_value;
   bool skip = false;
+  bool need_wait = true;
   while (true) {
-    sem_wait(&g_conf->sem);
     if (g_conf->queue.pop(stack_value)) {
 #ifndef DO_NOT_CHECK
       assert((stack_value.a + stack_value.b) == stack_value.sum);
 #endif
       skip = false;
+      if (need_wait) {
+        sem_wait(&g_conf->sem);
+      } else {
+        need_wait = true;
+      }
     } else {
-      sem_post(&g_conf->sem);
       if (0 == ATOMIC_LOAD(&(g_conf->producer_count))) {
         if (skip) {
           break;
@@ -172,6 +176,8 @@ void *sem_consumer(void *data) {
           skip = true;
         }
       }
+      sem_wait(&g_conf->sem);
+      need_wait = false;
     }
   }
   return NULL;
