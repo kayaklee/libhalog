@@ -263,8 +263,9 @@ int main(const int argc, char **argv) {
   }
   if (0 >= cpu_count) {
     cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+    cpu_count = 1 < cpu_count ? cpu_count - 1 : 1;
   }
-  int64_t consumer_count = 1 < cpu_count ? cpu_count - 1 : 1;
+  int64_t consumer_count = cpu_count;
 
   int64_t memory = sysconf(_SC_PHYS_PAGES) * sysconf(_SC_PAGE_SIZE);
   int64_t available = memory * 4 / 10;
