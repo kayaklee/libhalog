@@ -228,7 +228,7 @@ void *sem_producer(void *data) {
 void run_test(GConf *g_conf, const int64_t thread_count, const bool use_sem) {
   pthread_t *pds_consumer = new pthread_t[thread_count];
   pthread_t pds_producer;
-  g_conf->producer_count = thread_count;
+  g_conf->producer_count = 1;
   int64_t timeu = get_cur_microseconds_time();
   if (use_sem) {
     pthread_create(&pds_producer, NULL, sem_producer, g_conf);
@@ -264,11 +264,11 @@ int main(const int argc, char **argv) {
   if (0 >= cpu_count) {
     cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
   }
-  int64_t producer_count = (cpu_count + 1) / 2;
+  int64_t consumer_count = 1 < cpu_count ? cpu_count - 1 : 1;
 
   int64_t memory = sysconf(_SC_PHYS_PAGES) * sysconf(_SC_PAGE_SIZE);
   int64_t available = memory * 4 / 10;
-  int64_t count = available / sizeof(FIFONode<QueueValue>) / producer_count;
+  int64_t count = available / sizeof(FIFONode<QueueValue>) / consumer_count;
 
   GConf g_conf;
   g_conf.loop_times = count;
@@ -281,5 +281,5 @@ int main(const int argc, char **argv) {
 #else
   fprintf(stdout, "Run and check pop result...\n");
 #endif
-  run_test(&g_conf, producer_count, 0 != use_sem);
+  run_test(&g_conf, consumer_count, 0 != use_sem);
 }
