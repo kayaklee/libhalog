@@ -1,7 +1,7 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-AC_PREREQ([2.69])
+AC_PREREQ([2.63])
 AC_INIT([libhalog], [1.0], [likai.root@gmail.com])
 AM_INIT_AUTOMAKE
 #AC_CONFIG_HEADERS([config.h])
