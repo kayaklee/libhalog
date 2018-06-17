@@ -3,17 +3,19 @@
 case "x$1" in
 xinit)
   set -x
-  aclocal -I /usr/share/aclocal
-  libtoolize --force --copy --automake
-  autoconf --force
-  automake --foreign --copy --add-missing -Woverride
+  aclocal
+	automake --add-missing
+	libtoolize --force --automake
+	automake --foreign
+  autoconf
   ;;
 xclean)
 echo 'cleaning...'
   make distclean >/dev/null 2>&1
   rm -rf autom4te.cache
-  for fn in aclocal.m4 configure config.guess config.sub depcomp install-sh COPYING INSTALL \
-    ltmain.sh libtool missing mkinstalldirs config.log config.status Makefile; do
+  for fn in *.m4 configure config.guess config.sub depcomp install-sh COPYING INSTALL \
+    ltmain.sh libtool missing mkinstalldirs config.log config.status Makefile \
+		NEWS README AUTHORS ChangeLog; do
     rm -f $fn
   done
 
@@ -23,10 +25,11 @@ echo 'cleaning...'
   ;;
 *)
   set -x
-  aclocal -I /usr/share/aclocal
-  libtoolize --force --copy --automake
-  autoconf --force
-  automake --foreign --copy --add-missing -Woverride
+  aclocal
+	automake --add-missing
+	libtoolize --force --automake
+	automake --foreign
+  autoconf
   ./configure
   ;;
 esac

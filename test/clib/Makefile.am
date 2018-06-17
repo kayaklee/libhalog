@@ -3,7 +3,7 @@ AM_CPPFLAGS = \
 
 AM_CPPFLAGS += -DDO_NOT_CHECK
 
-LDADD = ${top_builddir}/src/clib/libclib.a
+LDADD = ${top_builddir}/src/clib/libclib.la
 
 AM_LDFLAGS = -lpthread -lgtest -L/usr/local/lib
 

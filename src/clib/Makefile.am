@@ -1,4 +1,4 @@
-noinst_LTLIBRARIES = libclib.a
+noinst_LTLIBRARIES = libclib.la
 
 AM_CPPFLAGS = \
 	-I${top_srcdir}/src
@@ -14,4 +14,4 @@ clib_sources = \
 	hal_i_allocator.h \
 	hal_define.h
 
-libclib_a_SOURCES = ${clib_sources}
+libclib_la_SOURCES = ${clib_sources}
